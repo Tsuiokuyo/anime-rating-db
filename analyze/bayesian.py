@@ -1,4 +1,5 @@
 import numpy as np
+import traceback
 
 
 def calc_bayesian_score(ratings, min_votes=100):
@@ -12,18 +13,23 @@ def calc_bayesian_score(ratings, min_votes=100):
     @return: list, shaped N, each item is a bayesian score of that sample. if votes < min_votes,
              bayesian score will be None.
     """
-
+    
     ratings = np.array(ratings)
     N, C = ratings.shape
     score = np.arange(1, C + 1)
     v_sum = np.sum(ratings)
     s_sum = np.sum(ratings * score)
-    overall_avg = s_sum / v_sum
-    
+    # overall_avg = s_sum / v_sum
+    if v_sum != 0:
+        overall_avg = s_sum / v_sum
+    else:
+        overall_avg = 0
+        
     v_sum = np.sum(ratings, 1)
     s_sum = np.sum(ratings * score, 1)
     bayesian = []
     for v, s in zip(v_sum, s_sum):
+        v = int(v)
         if v < min_votes:
             bayesian.append(None)
         else:
@@ -31,7 +37,7 @@ def calc_bayesian_score(ratings, min_votes=100):
     return bayesian
 
 
-def calc_bayesian_score_by_average(ratings, min_votes=100):
+def calc_bayesian_score_by_average(ratings, min_votes=10):
     """
     Calculate score using Bayesian Estimation.
 
@@ -41,15 +47,17 @@ def calc_bayesian_score_by_average(ratings, min_votes=100):
     @return: list, shaped N, each item is a bayesian score of that sample. if votes < min_votes,
              bayesian score will be None.
     """
-
+    
     score = np.array(ratings[0])
     votes = np.array(ratings[1])
     v_sum = np.sum(votes)
     s_sum = np.sum(score * votes)
     overall_avg = s_sum / v_sum
 
+
     bayesian = []
     for v, s in zip(votes, score):
+        v = int(v)
         if v < min_votes:
             bayesian.append(None)
         else:

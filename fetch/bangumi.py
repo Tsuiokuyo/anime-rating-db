@@ -4,6 +4,10 @@ import time
 import json
 import os
 import dateutil.parser
+import re
+import random
+import undetected_chromedriver as uc
+from selenium.webdriver.common.by import By
 
 from tqdm import tqdm
 from bs4 import BeautifulSoup
@@ -21,6 +25,8 @@ def parse_data(data):
 
     try:
         detail = {}
+        if 'id' not in data :
+            return None
         detail['id'] = data['id']
         if 'rating' in data:
             rating = data['rating']
@@ -31,17 +37,32 @@ def parse_data(data):
             detail['votes'] = None
             detail['score'] = None
             detail['rating_detail'] = None
-        detail['rank'] = data['rank'] if 'rank' in data else None
-        detail['image'] = data['images']['large']
-        detail['air_from'] = data['air_date']
+        #detail['rank'] = data['rank'] if 'rank' in data else None
+        if len(data) == 4:
+            detail['votes'] = data['votes']
+            detail['score'] = data['score']
+            detail['rating_detail'] = data['rating_detail']
+            return detail
+        #detail['air_from'] = data['air_date']
         detail['cn_name'] = data['name_cn']
-        detail['jp_name'] = data['name']
+        #detail['jp_name'] = data['name']
+        
+        if data['images'] is not None:
+            detail['image'] = data['images']['large'].replace("http://lain.bgm.tv/pic/cover/l/","").replace(".jpg","")
+        else:
+            detail['image'] = None
+        #detail['Thumbnail'] = data['images']['common']
+        #detail['grid'] = data['images']['grid']
+        
+        #detail['summary'] = data['summary']
+        
         if detail['cn_name'] == '':
-            detail['cn_name'] = detail['jp_name']
-        if detail['air_from'] == '0000-00-00':
-            return None
+            detail['cn_name'] = data['name']
+        #if detail['air_from'] == '0000-00-00':
+            #return None
         return detail
     except Exception:
+        print('bgm_id: {}'.format(data['id']))
         traceback.print_exc()
         return None
 
@@ -112,7 +133,7 @@ def cache_anime_detail(bgm_id, dir_path='.'):
         traceback.print_exc()
 
 
-def get_anime_detail(bgm_id, cache=False, cache_dir='.'):
+def get_anime_detail(bgm_id, cache=False, cache_dir='.',useCache = True,needSleep = False):
     """
     Get detail for an anime, from Bangumi.
     You can enable cache to make less requests.
@@ -135,20 +156,125 @@ def get_anime_detail(bgm_id, cache=False, cache_dir='.'):
             AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.1 Safari/605.1.15'
         }
         cache_path = os.path.join(cache_dir, '{}.json'.format(bgm_id))
-        if cache and os.path.exists(cache_path):
+
+        oldCache = True
+        if os.path.exists(cache_path) and time.time() - os.path.getmtime(cache_path) > 86400 * (random.getrandbits(5)):
+            # if random.getrandbits(4) == 0 :
+                oldCache = False
+        # elif random.getrandbits(6) == 0 :
+        #     oldCache = False
+        if cache and os.path.exists(cache_path) and oldCache or useCache and os.path.exists(cache_path):
             with open(cache_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
+                if 'error' in data:
+                    return None
         else:
-            resp = requests.get(api_url, headers=headers)
+            resp = requests.get(api_url, headers=headers, timeout=10)
             # response in json format
             data = resp.json()
+            
+            if 'error' in data:
+                return None
+            if 'error' not in data:
+                if cache and os.path.exists(cache_path):
+                        os.remove(cache_path)
+                if cache:
+                    # add to cache
+                    with open(cache_path, 'w', encoding='utf-8') as f:
+                        json.dump(data, f, indent=2, ensure_ascii=False)
+            if needSleep:
+                time.sleep(1)
+        return parse_data(data)
+    except Exception:
+        print('bgm_id: {}'.format(bgm_id))
+        traceback.print_exc()
+        return None
+
+def get_anime_detail2(ani_id, cache=False, cache_dir='.',useCache = True,needSleep = False):
+    
+    try:
+        url = 'https://bangumi.tv/subject/' + str(ani_id)
+        cache_path = os.path.join(cache_dir, '{}.json'.format(ani_id))
+
+        oldCache = True
+        if os.path.exists(cache_path) and time.time() - os.path.getmtime(cache_path) > 86400*10:
+            if random.getrandbits(4) == 0 :
+                oldCache = False
+        elif random.getrandbits(6) == 0 :
+            oldCache = False
+        if cache and os.path.exists(cache_path) and oldCache or useCache and os.path.exists(cache_path):
+            with open(cache_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                if 'error' in data:
+                    f.close()
+                    os.remove(cache_path)
+                    data = get_anime_detail2(ani_id, cache=True, cache_dir='fetch/bgm',useCache = False,needSleep = False)
+                    
+        else:
+            options = uc.ChromeOptions()
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--disable-popup-blocking")
+            options.add_argument("--profile-directory=Default")
+            options.add_argument("--disable-plugins-discovery")
+            options.add_argument('--no-first-run')
+            options.add_argument('--no-service-autorun')
+            options.add_argument('--no-default-browser-check')
+            options.add_argument('--password-store=basic')
+
+            browser = uc.Chrome(use_subprocess=True,suppress_welcome=False,options=options)
+
+            browser.get(url)
+            browser.add_cookie({"name": "chii_auth", "value": "9vXisJGKJz7UZPWMaReKO%2FWub5tZApraQIIFV28kT0syngzdv6FN3NVfYp31xVBmnPY%2BtGwKm3jrCDJOYZ2mzDRb8HVhStXJ%2F2pd"})
+            browser.add_cookie( {"name": "chii_cookietime", "value": "259200000"})
+            browser.add_cookie( {"name": "chii_searchDateLine", "value": "0"})
+            browser.add_cookie( {"name": "chii_sec_id", "value": "MxFYYDJna5MAXerXvrxCQUsFtR0LLuXWiaoMkA"})
+            browser.add_cookie( {"name": "chii_sid", "value": "Maisxa"})
+            browser.add_cookie( {"name": "__utmc", "value": "1"})
+            browser.add_cookie( {"name": "ticketing_country", "value": "tw"})
+            browser.add_cookie( {"name": "chii_theme", "value": "light"})
+            browser.refresh()
+            time.sleep(1)
+            browser.refresh()
+            time.sleep(2)
+            
+
+            html = browser.page_source
+
+            # # 藉由 BeautifulSoup 套件將網頁原始碼使用 `html.parser` 解析器來解析
+            data = {'id': ani_id}
+            soup = BeautifulSoup(html, 'html.parser')
+            score = soup.select('div.global_score')[0].select('span.number')[0].text
+            data['score'] = float(score)
+
+            votes = soup.select('div#ChartWarpper')[0].select('div.chart_desc')[0].select('span')[0].text
+            data['votes'] = int(votes)
+
+            v10 = soup.select('div#ChartWarpper')[0].select('ul.horizontalChart')[0].select('li')[0].select('span')[1].text.replace('(','').replace(')','')
+            v9 = soup.select('div#ChartWarpper')[0].select('ul.horizontalChart')[0].select('li')[1].select('span')[1].text.replace('(','').replace(')','')
+            v8 = soup.select('div#ChartWarpper')[0].select('ul.horizontalChart')[0].select('li')[2].select('span')[1].text.replace('(','').replace(')','')
+            v7 = soup.select('div#ChartWarpper')[0].select('ul.horizontalChart')[0].select('li')[3].select('span')[1].text.replace('(','').replace(')','')
+            v6 = soup.select('div#ChartWarpper')[0].select('ul.horizontalChart')[0].select('li')[4].select('span')[1].text.replace('(','').replace(')','')
+            v5 = soup.select('div#ChartWarpper')[0].select('ul.horizontalChart')[0].select('li')[5].select('span')[1].text.replace('(','').replace(')','')
+            v4 = soup.select('div#ChartWarpper')[0].select('ul.horizontalChart')[0].select('li')[6].select('span')[1].text.replace('(','').replace(')','')
+            v3 = soup.select('div#ChartWarpper')[0].select('ul.horizontalChart')[0].select('li')[7].select('span')[1].text.replace('(','').replace(')','')
+            v2 = soup.select('div#ChartWarpper')[0].select('ul.horizontalChart')[0].select('li')[8].select('span')[1].text.replace('(','').replace(')','')
+            v1 = soup.select('div#ChartWarpper')[0].select('ul.horizontalChart')[0].select('li')[9].select('span')[1].text.replace('(','').replace(')','')
+
+            v = {'10': int(v10), '9': int(v9), '8': int(v8), '7': int(v7), '6': int(v6), '5': int(v5)
+                                , '4': int(v4), '3': int(v3), '2': int(v2), '1': int(v1)}
+            data['rating_detail'] = v
+            browser.close()
+            
+            if cache and os.path.exists(cache_path):
+                os.remove(cache_path)
+                    
             if cache:
                 # add to cache
                 with open(cache_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=2, ensure_ascii=False)
-        return parse_data(data)
+        return data
     except Exception:
-        print('bgm_id: {}'.format(bgm_id))
+        print('bgm_id: {}'.format(ani_id))
         traceback.print_exc()
         return None
 
@@ -304,4 +430,5 @@ if __name__ == '__main__':
     #     json.dump(detail_list, f, indent=2, ensure_ascii=False)
 
     # res = search_for_anime('科学忍者隊ガッチャマン', 'Science Ninja Team Gatchaman', '1972-10-01')
-    # print(res)
+    res= get_anime_detail2(338672)
+    print(res)

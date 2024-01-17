@@ -132,3 +132,5 @@ dmypy.json
 # local data
 *.xml
 *.png
+
+fetct/*/*.json

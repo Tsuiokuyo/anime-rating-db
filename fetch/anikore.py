@@ -4,6 +4,7 @@ import time
 import json
 import os
 import re
+import random
 
 from tqdm import tqdm
 from bs4 import BeautifulSoup
@@ -48,7 +49,7 @@ def get_all_anime_list():
         return None
 
 
-def get_anime_detail(ani_id, cache=False, cache_dir='.'):
+def get_anime_detail(ani_id, cache=False, cache_dir='.',useCache = True,needSleep = False):
     """
     Get detail for an anime, from Anikore.
     You can enable cache to make less requests.
@@ -70,11 +71,24 @@ def get_anime_detail(ani_id, cache=False, cache_dir='.'):
             AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.1 Safari/605.1.15'
         }
         cache_path = os.path.join(cache_dir, '{}.json'.format(ani_id))
-        if cache and os.path.exists(cache_path):
-            with open(cache_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+        oldCache = True
+        if os.path.exists(cache_path) and time.time() - os.path.getmtime(cache_path) > 86400 * (random.getrandbits(5)):
+            # if random.getrandbits(4) == 0 :
+                oldCache = False
+        # elif random.getrandbits(6) == 0 :
+        #     oldCache = False
+        if cache and os.path.exists(cache_path) and oldCache or useCache and os.path.exists(cache_path):
+            # with open(cache_path, 'r', encoding='utf-8') as f:
+            #     data = json.load(f)
+            try:
+                with open(cache_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            except json.JSONDecodeError:
+                # 處理解碼失敗的情況
+                print(f"Failed to decode JSON in file: {cache_path}")
+                return None
         else:
-            resp = requests.get(url, headers=headers)
+            resp = requests.get(url, headers=headers, timeout=10)
             # response in json format
             html = resp.text
             if not html:
@@ -84,6 +98,7 @@ def get_anime_detail(ani_id, cache=False, cache_dir='.'):
                 return get_anime_detail(ani_id, cache, cache_dir)
             data = {'id': ani_id}
             soup = BeautifulSoup(html, 'html.parser')
+            '''
             title = soup.select('section.l-animeDetailHeader')[0].select('h1')[0].text
             title = title.strip().replace('\r\n', '')
             data['title'] = title
@@ -91,15 +106,22 @@ def get_anime_detail(ani_id, cache=False, cache_dir='.'):
             if match_obj:
                 data['jp_name'] = match_obj.group(1)
                 data['type'] = match_obj.group(2)
+            '''
+            if soup.select('div.l-animeDetailHeader_pointAndButtonBlock_starBlock') is  None:
+                return None
             rating = soup.select('div.l-animeDetailHeader_pointAndButtonBlock_starBlock')[0]
             data['score'] = float(rating.select('strong')[0].text)
             data['votes'] = int(rating.select('a')[0].text)
-            air = soup.select('ul.l-breadcrumb_flexRoot')[0].select('li')[2]
-            data['year'] = int(air.a.attrs['href'].split('/')[-2])
+            #air = soup.select('ul.l-breadcrumb_flexRoot')[0].select('li')[2]
+            #data['year'] = int(air.a.attrs['href'].split('/')[-2])
+            if cache and os.path.exists(cache_path):
+                    os.remove(cache_path)
             if cache:
                 # add to cache
                 with open(cache_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=2, ensure_ascii=False)
+            if needSleep:
+                time.sleep(1)
         return data
     except Exception:
         print('anikore: {}'.format(ani_id))
@@ -115,5 +137,5 @@ if __name__ == '__main__':
     # id_list = get_all_anime_list()
     # with open('anikore.json', 'w', encoding='utf-8') as f:
     #     json.dump(id_list, f, indent=2)
-    # detail = get_anime_detail(4940)
-    # print(detail)
+    detail = get_anime_detail(4940)
+    print(detail)
